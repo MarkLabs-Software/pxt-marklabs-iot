@@ -1,0 +1,21 @@
+{
+    "name": "marklabs-iot",
+    "version": "0.1.0",
+    "description": "MarkLabs IoT: micro:bit + Grove WiFi 8266 gửi số liệu lên iot.markpage2k1.me và nhận lệnh từ bảng điều khiển",
+    "license": "MIT",
+    "dependencies": {
+        "core": "*"
+    },
+    "files": [
+        "README.md",
+        "main.ts"
+    ],
+    "testFiles": [
+        "test.ts"
+    ],
+    "public": true,
+    "supportedTargets": [
+        "microbit"
+    ],
+    "preferredEditor": "blocksprj"
+}
