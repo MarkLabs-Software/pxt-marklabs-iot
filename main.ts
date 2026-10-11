@@ -46,8 +46,33 @@ namespace marklabsIot {
     let mode = 0
     let wifiConnected = false
     let lastOk = false
-    /** Lý do lần gần nhất không được, chữ không dấu để hiện được trên màn LED. Rỗng là không có lỗi. */
-    let lastError = ""
+    /**
+     * Mã lỗi gần nhất, 0 là không có lỗi. Bảng mã nằm ở README (mục "Bảng mã lỗi"), hình của từng mã vẽ trong `errorImage`.
+     * Đổi nghĩa một mã thì sửa cả README và chạy lại `node scripts/error-icons.mjs`.
+     */
+    let lastError = 0
+    const NO_BOARD = 1
+    const NO_NETWORK = 2
+    const BAD_PASSWORD = 3
+    const CANNOT_JOIN = 4
+    const NO_SERVER = 5
+    const NO_PROJECT = 6
+    const BAD_PROJECT = 7
+    const NETWORK_GLITCH = 8
+    const NOT_CONNECTED = 9
+    /** Câu không dấu của từng mã (chỉ số = mã), cho khối "lỗi gần nhất". */
+    const ERROR_TEXTS = [
+        "",
+        "khong thay mach WiFi: kiem cong P15:P16, pin, cong tac",
+        "khong thay WiFi (ten sai hoac 5GHz)",
+        "sai mat khau WiFi",
+        "khong vao duoc WiFi",
+        "vao WiFi roi nhung khong goi duoc may chu",
+        "chua co ma du an",
+        "sai ma du an",
+        "loi mang, thu lai",
+        "chua ket noi WiFi",
+    ]
     /** Hai khối mạng chạy cùng lúc (vd "mãi mãi" và "khi nút A được bấm") phải chờ nhau, không thì lệnh AT lẫn vào nhau. */
     let busy = false
     /** Dữ liệu UART nhận được từ lệnh AT đang chạy. */
@@ -188,19 +213,19 @@ namespace marklabsIot {
         else if (mode == 2) body = viaTcp(path)
         else lastOk = false
         busy = false
-        if (!lastOk) lastError = mode == 0 ? "khong goi duoc may chu" : "loi mang, thu lai"
-        else if (body == "sai ma") lastError = "sai ma du an"
+        if (!lastOk) lastError = mode == 0 ? NO_SERVER : NETWORK_GLITCH
+        else if (body == "sai ma") lastError = BAD_PROJECT
         return body
     }
 
     function ready(): boolean {
         lastOk = false
         if (!wifiConnected) {
-            if (lastError == "") lastError = "chua ket noi WiFi"
+            if (lastError == 0) lastError = NOT_CONNECTED
             return false
         }
         if (projectCode.length == 0) {
-            lastError = "chua co ma du an"
+            lastError = NO_PROJECT
             return false
         }
         return true
@@ -210,17 +235,88 @@ namespace marklabsIot {
         if (!ready()) return
         const body = request("/w/" + projectCode + "?v" + pin + "=" + encode(value))
         lastOk = lastOk && body == "ok"
-        if (lastOk) lastError = ""
+        if (lastOk) lastError = 0
     }
 
-    /** Mã lỗi của AT+CWJAP ("+CWJAP:<mã>") ra câu không dấu cho màn LED. */
-    function wifiError(): string {
+    /** Mã lỗi của AT+CWJAP ("+CWJAP:<mã>": 1 hết giờ, 2 sai mật khẩu, 3 không thấy mạng, 4 không vào được) ra mã lỗi của extension. */
+    function wifiError(): number {
         const at = uart.indexOf("+CWJAP:")
         const code = at < 0 ? "" : uart.charAt(at + 7)
-        if (code == "1") return "WiFi khong tra loi"
-        if (code == "2") return "sai mat khau WiFi"
-        if (code == "3") return "khong thay WiFi (ten sai hoac 5GHz)"
-        return "khong vao duoc WiFi"
+        if (code == "2") return BAD_PASSWORD
+        if (code == "3") return NO_NETWORK
+        return CANNOT_JOIN
+    }
+
+    /**
+     * Hình của từng mã lỗi: chữ số 3×5 ở giữa màn LED, không chạy chữ nên dễ nhìn.
+     * README vẽ lại đúng các hình này (`node scripts/error-icons.mjs` đọc thẳng file này).
+     */
+    function errorImage(code: number): Image {
+        switch (code) {
+            case 1: return images.createImage(`
+                . . # . .
+                . # # . .
+                . . # . .
+                . . # . .
+                . # # # .
+                `)
+            case 2: return images.createImage(`
+                . # # # .
+                . . . # .
+                . # # # .
+                . # . . .
+                . # # # .
+                `)
+            case 3: return images.createImage(`
+                . # # # .
+                . . . # .
+                . . # # .
+                . . . # .
+                . # # # .
+                `)
+            case 4: return images.createImage(`
+                . # . # .
+                . # . # .
+                . # # # .
+                . . . # .
+                . . . # .
+                `)
+            case 5: return images.createImage(`
+                . # # # .
+                . # . . .
+                . # # # .
+                . . . # .
+                . # # # .
+                `)
+            case 6: return images.createImage(`
+                . # # # .
+                . # . . .
+                . # # # .
+                . # . # .
+                . # # # .
+                `)
+            case 7: return images.createImage(`
+                . # # # .
+                . . . # .
+                . . # . .
+                . . # . .
+                . . # . .
+                `)
+            case 8: return images.createImage(`
+                . # # # .
+                . # . # .
+                . # # # .
+                . # . # .
+                . # # # .
+                `)
+            default: return images.createImage(`
+                . # # # .
+                . # . # .
+                . # # # .
+                . . . # .
+                . # # # .
+                `)
+        }
     }
 
     /* ---------- Khối ---------- */
@@ -247,7 +343,7 @@ namespace marklabsIot {
         serial.setRxBufferSize(254)
         wifiConnected = false
         mode = 0
-        lastError = ""
+        lastError = 0
         // Đặt lại mạch về mặc định (xoá cấu hình cũ của chương trình khác), chờ mạch khởi động lại.
         flush()
         serial.writeString("AT+RESTORE\r\n")
@@ -256,7 +352,7 @@ namespace marklabsIot {
         let alive = false
         for (let i = 0; i < 5 && !alive; i++) alive = command("AT", 1000)
         if (!alive) {
-            lastError = "khong thay mach WiFi: kiem cong P15:P16, pin, cong tac"
+            lastError = NO_BOARD
             busy = false
             return
         }
@@ -267,7 +363,7 @@ namespace marklabsIot {
             lastError = wifiError()
         } else {
             detect()
-            if (mode == 0) lastError = "vao WiFi roi nhung khong goi duoc may chu"
+            if (mode == 0) lastError = NO_SERVER
         }
         busy = false
     }
@@ -300,13 +396,35 @@ namespace marklabsIot {
     }
 
     /**
-     * Lý do lần gần nhất không được (chữ không dấu, hiện được trên màn LED), vd "sai mat khau WiFi". Rỗng là không có lỗi.
+     * Hiện mã lỗi lên màn LED: dấu ✗ rồi một chữ số 1–9 đứng yên. Tra nghĩa ở bảng mã lỗi trong README của extension.
+     * Không có lỗi thì hiện dấu ✓.
      */
-    //% blockId=marklabsiot_last_error
-    //% block="lỗi gần nhất"
+    //% blockId=marklabsiot_show_error
+    //% block="hiện mã lỗi"
+    //% group="Kết nối" weight=66
+    export function showError(): void {
+        if (lastError == 0) {
+            basic.showIcon(IconNames.Yes)
+            return
+        }
+        basic.showIcon(IconNames.No, 400)
+        errorImage(lastError).showImage(0, 1000)
+    }
+
+    /** Mã lỗi gần nhất (1–9), 0 là không có lỗi. Nghĩa từng mã: bảng mã lỗi trong README của extension. */
+    //% blockId=marklabsiot_error_code
+    //% block="mã lỗi"
     //% group="Kết nối" weight=65
-    export function errorText(): string {
+    export function errorCode(): number {
         return lastError
+    }
+
+    /** Câu không dấu của mã lỗi gần nhất, vd "sai mat khau WiFi". Rỗng là không có lỗi. */
+    //% blockId=marklabsiot_last_error
+    //% block="lỗi gần nhất (chữ)"
+    //% advanced=true
+    export function errorText(): string {
+        return ERROR_TEXTS[lastError]
     }
 
     /**
@@ -345,11 +463,11 @@ namespace marklabsIot {
         const body = request("/r/" + projectCode + "/v" + pin)
         // Máy chủ đặt dấu = trước giá trị; thiếu dấu này là thân báo lỗi.
         if (!lastOk || body.charAt(0) != "=") {
-            if (lastOk && body != "sai ma") lastError = "may chu tra loi la"
+            if (lastOk && body != "sai ma") lastError = NETWORK_GLITCH
             lastOk = false
             return ""
         }
-        lastError = ""
+        lastError = 0
         return body.substr(1)
     }
 
