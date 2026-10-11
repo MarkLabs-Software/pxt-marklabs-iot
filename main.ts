@@ -261,7 +261,8 @@ namespace marklabsIot {
                 reads += p
             }
         }
-        if (reads.length > 0) query += "&r=" + reads
+        // h=1: cho phép máy chủ giữ máy tới 2 giây và trả ngay khi bảng điều khiển đổi một chân đang đọc (lệnh xuống gần như tức thì).
+        if (reads.length > 0) query += "&r=" + reads + "&h=1"
         const body = request("/s/" + projectCode + (query.length > 0 ? "?" + query.substr(1) : ""))
         if (!lastOk) return
         // Thân trả về: "=<nhịp giây>\t<giá trị chân đọc 1>\t<giá trị chân đọc 2>…"; thiếu dấu "=" là thân báo lỗi.
@@ -272,7 +273,8 @@ namespace marklabsIot {
         }
         const parts = body.substr(1).split("\t")
         const seconds = parseInt(parts[0])
-        if (seconds >= 1 && seconds <= 60) syncMs = seconds * 1000
+        // Nhịp 0: máy chủ vừa giữ máy xong, hỏi lại liền.
+        if (seconds >= 0 && seconds <= 60) syncMs = seconds * 1000
         for (let i = 0; i < readPins.length; i++) inValue[readPins[i]] = i + 1 < parts.length ? parts[i + 1] : ""
         for (let i = 0; i < sentPins.length; i++) {
             const p = sentPins[i]
@@ -299,7 +301,9 @@ namespace marklabsIot {
                 } else if (used) {
                     syncOnce()
                 }
-                const until = control.millis() + syncMs
+                // Hỏng (mất mạng, sai mã…) thì chờ ít nhất 2 giây mới thử lại, kể cả khi nhịp là 0; lần nào cũng nhường chương trình chính.
+                const until = control.millis() + (lastOk ? syncMs : Math.max(syncMs, 2000))
+                basic.pause(20)
                 while (control.millis() < until && !syncSoon) basic.pause(100)
                 syncSoon = false
             }

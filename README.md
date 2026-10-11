@@ -31,7 +31,9 @@ Cắm vào cổng khác thì bấm dấu + trên khối `kết nối WiFi` để
 | `hiện mã lỗi` | Hiện dấu ✗ rồi một chữ số 1–9 đứng yên trên màn LED. Tra nghĩa ở [bảng mã lỗi](#bảng-mã-lỗi). Không có lỗi thì hiện ✓. |
 | `mã lỗi` | Mã lỗi gần nhất (1–9), 0 là không có lỗi. |
 
-Mạch **đồng bộ** với bảng điều khiển theo nhịp: 2 giây một lần khi có người đang mở bảng, 10 giây khi không ai mở. Mỗi nhịp là một lần gọi lên máy chủ, gửi mọi chân vừa đổi và đọc mọi chân chương trình có đọc. Số thay đổi nhanh hơn nhịp thì bảng chỉ thấy số mới nhất của mỗi lần.
+Mạch **đồng bộ** với bảng điều khiển theo nhịp: khoảng 2 giây một lần khi có người đang mở bảng, 10 giây khi không ai mở. Mỗi nhịp là một lần gọi lên máy chủ, gửi mọi chân vừa đổi và đọc mọi chân chương trình có đọc. Số thay đổi nhanh hơn nhịp thì bảng chỉ thấy số mới nhất của mỗi lần.
+
+Lệnh từ bảng điều khiển xuống mạch (nút, công tắc, thanh trượt) **gần như tức thì**: khi có người mở bảng, máy chủ giữ lần gọi của mạch tối đa 2 giây và trả lời ngay lúc bảng đổi số.
 
 ## Bảng mã lỗi
 
@@ -72,7 +74,8 @@ basic.forever(function () {
 
 Một luồng nền gọi máy chủ bằng HTTP thường (cổng 80), mỗi nhịp đúng một yêu cầu:
 
-- `GET /s/<mã>?v0=25&v3=abc&r=15` → `=2⇥7⇥hello` (⇥ là dấu tab): gửi V0, V3; đọc V1, V5. Số đầu là nhịp lần sau (giây), máy chủ quyết; dấu `=` đứng đầu nghĩa là được.
+- `GET /s/<mã>?v0=25&v3=abc&r=15&h=1` → `=2⇥7⇥hello` (⇥ là dấu tab): gửi V0, V3; đọc V1, V5. Số đầu là nhịp lần sau (giây), máy chủ quyết; dấu `=` đứng đầu nghĩa là được.
+- `h=1`: máy chủ được giữ yêu cầu tới 2 giây khi có người mở bảng, trả ngay khi bảng đổi V1 hay V5, rồi báo nhịp `0` (hỏi lại liền).
 - Chân không đổi thì 10 giây mới gửi nhắc lại một lần. Chương trình chưa gửi, chưa đọc gì thì không gọi lên.
 
 Gọi bằng kết nối TCP, tự viết yêu cầu HTTP (đã chạy trên mạch thật). Không được thì thử lệnh `AT+HTTPCLIENT` của firmware. Khối nâng cao `cách gọi mạng` cho biết đang dùng cách nào.
