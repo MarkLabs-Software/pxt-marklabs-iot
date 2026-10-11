@@ -1,6 +1,6 @@
 # MarkLabs IoT cho micro:bit
 
-Extension MakeCode để micro:bit cùng mạch **Cytron Grove WiFi 8266** gửi số liệu lên bảng điều khiển [MarkLabs IoT](https://iot.marklabs.workers.dev) và nhận lệnh từ bảng điều khiển trên trình duyệt. Không cần tài khoản Blynk.
+Extension MakeCode để micro:bit cùng mạch **Cytron Grove WiFi 8266** gửi số liệu lên bảng điều khiển [MarkLabs IoT](https://iot.marklabs-iot.workers.dev) và nhận lệnh từ bảng điều khiển trên trình duyệt. Không cần tài khoản Blynk.
 
 *MakeCode extension for micro:bit + Cytron Grove WiFi 8266 (ESP-AT firmware) talking to the MarkLabs IoT dashboard.*
 
@@ -43,7 +43,7 @@ Khi hỏng, khối `hiện mã lỗi` cho màn LED hiện dấu ✗ <img src="im
 | <img src="images/loi-2.svg" width="48" alt="mã 2"> | **2** | Không thấy mạng WiFi. | Gõ đúng tên WiFi (phân biệt chữ hoa, chữ thường). Mạch chỉ bắt được WiFi **2,4 GHz**: cục phát có mạng "…5G" thì chọn mạng kia. |
 | <img src="images/loi-3.svg" width="48" alt="mã 3"> | **3** | Sai mật khẩu WiFi. | Gõ lại mật khẩu, chú ý chữ hoa, chữ thường. |
 | <img src="images/loi-4.svg" width="48" alt="mã 4"> | **4** | Không vào được WiFi: sóng yếu, cục phát không trả lời, hoặc WiFi phải đăng nhập qua trang web (trường học, quán cà phê). | Mang mạch lại gần cục phát. Thử phát WiFi từ điện thoại. |
-| <img src="images/loi-5.svg" width="48" alt="mã 5"> | **5** | Vào WiFi rồi nhưng không gọi được máy chủ: mạng không ra được Internet, hoặc chặn. | Thử phát WiFi từ điện thoại. Mở `iot.marklabs.workers.dev` trên điện thoại cùng mạng xem có vào được không. |
+| <img src="images/loi-5.svg" width="48" alt="mã 5"> | **5** | Vào WiFi rồi nhưng không gọi được máy chủ: mạng không ra được Internet, hoặc chặn. | Thử phát WiFi từ điện thoại. Mở `iot.marklabs-iot.workers.dev` trên điện thoại cùng mạng xem có vào được không. |
 | <img src="images/loi-6.svg" width="48" alt="mã 6"> | **6** | Chưa có mã dự án. | Thêm khối `dùng mã dự án` vào "khi bắt đầu", gõ mã 8 chữ của nhóm. |
 | <img src="images/loi-7.svg" width="48" alt="mã 7"> | **7** | Sai mã dự án: gõ sai, hoặc thầy cô đã đổi mã hay xoá dự án. | Xem lại mã trên phiếu, hoặc hỏi thầy cô mã mới. |
 | <img src="images/loi-8.svg" width="48" alt="mã 8"> | **8** | Mạng chập chờn lúc gửi hay đọc. | Lần sau thường tự được. Hiện mãi thì kiểm pin (pin yếu làm mạch WiFi tắt) và mang lại gần cục phát. |
@@ -77,7 +77,7 @@ Một luồng nền gọi máy chủ bằng HTTP thường (cổng 80), mỗi nh
 
 Gọi bằng kết nối TCP, tự viết yêu cầu HTTP (đã chạy trên mạch thật). Không được thì thử lệnh `AT+HTTPCLIENT` của firmware. Khối nâng cao `cách gọi mạng` cho biết đang dùng cách nào.
 
-Gọi tay để thử: mở `http://iot.marklabs.workers.dev/w/<mã>?v1=7` trên trình duyệt để gửi số 7 xuống chân V1.
+Gọi tay để thử: mở `http://iot.marklabs-iot.workers.dev/w/<mã>?v1=7` trên trình duyệt để gửi số 7 xuống chân V1.
 
 Hình chữ số của từng mã lỗi vẽ trong hàm `errorImage` (main.ts). Sửa hình thì chạy `node scripts/error-icons.mjs` để vẽ lại các ảnh trong `images/`.
 

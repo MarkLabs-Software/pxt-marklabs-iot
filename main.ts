@@ -41,7 +41,7 @@ namespace marklabsIot {
     const HEX = "0123456789ABCDEF"
 
     /** Máy chủ: Worker `iot` ở tài khoản Cloudflare riêng của MarkLabs IoT. */
-    let server = "iot.marklabs.workers.dev"
+    let server = "iot.marklabs-iot.workers.dev"
     let projectCode = ""
     /** 0: chưa biết, 1: AT+HTTPCLIENT, 2: TCP tự viết HTTP. */
     let mode = 0
