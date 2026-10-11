@@ -136,12 +136,15 @@ namespace marklabsIot {
 
     /* ---------- HTTP ---------- */
 
-    /** Cách 1: AT+HTTPCLIENT trả "+HTTPCLIENT:<độ dài>,<thân>" rồi OK. Thân rỗng thì không có dòng đó. */
+    // Hai cách gọi mạng dưới đây đặt `lastOk` = đã nhận được phản hồi của máy chủ, mã HTTP nào cũng vậy, và trả về phần thân.
+    // Đúng hay sai do thân quyết (vd mã dự án sai: 404 với thân "sai ma" → mã lỗi 7, không phải lỗi mạng).
+
+    /** Cách 1: AT+HTTPCLIENT trả "+HTTPCLIENT:<độ dài>,<thân>" rồi OK (mã HTTP lỗi thì ERROR). Thân rỗng thì không có dòng đó. */
     function viaHttpClient(path: string): string {
-        lastOk = command("AT+HTTPCLIENT=2,0,\"http://" + server + path + "\",,,1", 10000)
-        if (!lastOk) return ""
+        const ok = command("AT+HTTPCLIENT=2,0,\"http://" + server + path + "\",,,1", 10000)
         const tag = "+HTTPCLIENT:"
         const at = uart.indexOf(tag)
+        lastOk = ok || at >= 0
         if (at < 0) return ""
         const body = uart.substr(uart.indexOf(",", at) + 1)
         const end = body.indexOf("\r\n")
@@ -183,7 +186,7 @@ namespace marklabsIot {
         }
         const text = stripIpd(uart)
         const head = text.indexOf("HTTP/1.1 ")
-        if (head < 0 || text.substr(head + 9, 3) != "200") return ""
+        if (head < 0) return ""
         const start = text.indexOf("\r\n\r\n", head)
         if (start < 0) return ""
         let body = text.substr(start + 4)
