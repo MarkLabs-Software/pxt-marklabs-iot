@@ -203,6 +203,7 @@ namespace marklabsIot {
 
     /**
      * Bật mạch WiFi 8266 và kết nối mạng WiFi. Đặt trong "khi bắt đầu"; mất khoảng 5–20 giây.
+     * REKA:BIT: cắm mạch WiFi vào cổng Grove P15:P16 (đúng chân mặc định), lắp pin và bật công tắc.
      * @param ssid tên mạng WiFi
      * @param password mật khẩu WiFi
      * @param tx chân micro:bit nối vào RX của mạch WiFi, eg: SerialPin.P16

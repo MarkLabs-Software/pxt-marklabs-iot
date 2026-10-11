@@ -10,6 +10,12 @@ Extension MakeCode để micro:bit cùng mạch **Cytron Grove WiFi 8266** gửi
 2. Bấm **Extensions** (Tiện ích mở rộng), dán đường dẫn `https://github.com/MarkLabs-Software/pxt-marklabs-iot`.
 3. Mục **MarkLabs IoT** hiện ra trong danh sách khối.
 
+## Nối dây
+
+Với bo **REKA:BIT**: cắm mạch Grove WiFi 8266 vào cổng Grove **P15:P16**, đúng chân mặc định của khối kết nối (Tx = P16, Rx = P15). Lắp pin và gạt công tắc REKA:BIT sang **ON**: chỉ cắm USB vào micro:bit thì không đủ điện cho mạch WiFi.
+
+Cắm vào cổng khác thì bấm dấu + trên khối `kết nối WiFi` để chọn chân: chân Tx là chân ghi sau dấu hai chấm của tên cổng, chân Rx là chân đứng trước (vd cổng P13:P14 thì Tx = P14, Rx = P13). Cổng P1:P9 không dùng được vì micro:bit không đặt UART lên P9.
+
 ## Khối
 
 | Khối | Dùng để |
