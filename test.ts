@@ -3,15 +3,11 @@ marklabsIot.connectWifi("TenWiFi", "MatKhau")
 marklabsIot.useProject("abcd2345")
 let n = 0
 basic.forever(function () {
-    if (!marklabsIot.isWifiConnected()) {
-        marklabsIot.showError()
-        return
-    }
     n += 1
     marklabsIot.sendNumber(n, VirtualPin.V0)
-    if (!marklabsIot.succeeded()) {
+    if (marklabsIot.errorCode() > 0) {
         marklabsIot.showError()
-        return
+    } else {
+        basic.showNumber(marklabsIot.readNumber(VirtualPin.V1))
     }
-    basic.showNumber(marklabsIot.readNumber(VirtualPin.V1))
 })

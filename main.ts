@@ -1,9 +1,9 @@
 /**
- * MarkLabs IoT: micro:bit gửi số liệu lên https://iot.markpage2k1.me và nhận lệnh từ bảng điều khiển trên trình duyệt,
- * qua mạch Cytron Grove WiFi 8266 (firmware ESP-AT v2.2.0).
+ * MarkLabs IoT: micro:bit gửi số liệu lên bảng điều khiển trên trình duyệt và nhận lệnh từ đó, qua mạch Cytron Grove WiFi 8266
+ * (firmware ESP-AT v2.2.0). Máy chủ chạy trên Cloudflare Workers (tài khoản riêng của MarkLabs IoT, tên miền workers.dev).
  *
- * Mạch gọi máy chủ bằng HTTP thường. Ưu tiên lệnh AT+HTTPCLIENT (ESP8266 tự lo header, chỉ trả phần thân);
- * firmware không có lệnh này thì tự lùi về kết nối TCP và tự viết yêu cầu HTTP (có header Host).
+ * Mạch gọi máy chủ bằng HTTP thường, theo nhịp (xem "Đồng bộ theo nhịp"): mỗi nhịp đúng một yêu cầu, gửi và đọc cùng lúc.
+ * Gọi mạng bằng kết nối TCP tự viết yêu cầu HTTP (có header Host); firmware có AT+HTTPCLIENT thì dùng được làm cách thứ hai.
  * Cách gửi lệnh AT học từ extension pxt-esp8266 của Cytron Technologies (MIT).
  */
 
@@ -40,7 +40,8 @@ namespace marklabsIot {
     const FAIL = "\nFAIL\r\n"
     const HEX = "0123456789ABCDEF"
 
-    let server = "iot.markpage2k1.me"
+    /** Máy chủ: Worker `iot` ở tài khoản Cloudflare riêng của MarkLabs IoT. */
+    let server = "iot.marklabs.workers.dev"
     let projectCode = ""
     /** 0: chưa biết, 1: AT+HTTPCLIENT, 2: TCP tự viết HTTP. */
     let mode = 0
@@ -195,12 +196,15 @@ namespace marklabsIot {
         return body
     }
 
-    /** Thử AT+HTTPCLIENT trước, không được thì TCP. Cả hai đều hỏng thì lần sau thử lại. */
+    /**
+     * Chọn cách gọi mạng. Thử TCP trước: đã chạy trên mạch thật (Grove WiFi 8266 + REKA:BIT, 11/10/2026), còn AT+HTTPCLIENT
+     * trên firmware của Cytron thì chưa. Cả hai đều hỏng thì lần sau thử lại.
+     */
     function detect(): void {
-        mode = 1
-        if (viaHttpClient("/ping") == "pong") return
         mode = 2
         if (viaTcp("/ping") == "pong") return
+        mode = 1
+        if (viaHttpClient("/ping") == "pong") return
         mode = 0
     }
 
@@ -214,28 +218,106 @@ namespace marklabsIot {
         else lastOk = false
         busy = false
         if (!lastOk) lastError = mode == 0 ? NO_SERVER : NETWORK_GLITCH
-        else if (body == "sai ma") lastError = BAD_PROJECT
         return body
     }
 
-    function ready(): boolean {
-        lastOk = false
-        if (!wifiConnected) {
-            if (lastError == 0) lastError = NOT_CONNECTED
-            return false
+    /* ---------- Đồng bộ theo nhịp ---------- */
+    // Khối gửi chỉ ghi nhớ số, khối đọc trả số của lần đồng bộ gần nhất: không khối nào phải chờ mạng.
+    // Một luồng nền gom mọi chân cần gửi và cần đọc vào một yêu cầu `/s/<mã>?v0=..&r=15`, theo nhịp máy chủ báo
+    // (2 giây khi có người mở bảng điều khiển, 10 giây khi không ai mở): cả lớp gọi lên ít hơn nhiều lần so với gọi từng khối.
+
+    /** Chân không đổi thì cứ 10 giây gửi nhắc lại một lần (bảng điều khiển biết số vẫn còn đúng). */
+    const RESEND_MS = 10000
+    const outValue: string[] = ["", "", "", "", "", "", "", "", "", ""]
+    const outUsed: boolean[] = [false, false, false, false, false, false, false, false, false, false]
+    const outDirty: boolean[] = [false, false, false, false, false, false, false, false, false, false]
+    const outSentAt: number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    const inUsed: boolean[] = [false, false, false, false, false, false, false, false, false, false]
+    const inValue: string[] = ["", "", "", "", "", "", "", "", "", ""]
+    let syncMs = 2000
+    let syncSoon = false
+    let loopStarted = false
+
+    function syncOnce(): void {
+        const now = control.millis()
+        let query = ""
+        const sentPins: number[] = []
+        const sentValues: string[] = []
+        for (let p = 0; p < 10; p++) {
+            if (outUsed[p] && (outDirty[p] || now - outSentAt[p] >= RESEND_MS)) {
+                query += "&v" + p + "=" + encode(outValue[p])
+                sentPins.push(p)
+                sentValues.push(outValue[p])
+            }
         }
-        if (projectCode.length == 0) {
-            lastError = NO_PROJECT
-            return false
+        const readPins: number[] = []
+        let reads = ""
+        for (let p = 0; p < 10; p++) {
+            if (inUsed[p]) {
+                readPins.push(p)
+                reads += p
+            }
         }
-        return true
+        if (reads.length > 0) query += "&r=" + reads
+        const body = request("/s/" + projectCode + (query.length > 0 ? "?" + query.substr(1) : ""))
+        if (!lastOk) return
+        // Thân trả về: "=<nhịp giây>\t<giá trị chân đọc 1>\t<giá trị chân đọc 2>…"; thiếu dấu "=" là thân báo lỗi.
+        if (body.charAt(0) != "=") {
+            lastOk = false
+            lastError = body == "sai ma" ? BAD_PROJECT : NETWORK_GLITCH
+            return
+        }
+        const parts = body.substr(1).split("\t")
+        const seconds = parseInt(parts[0])
+        if (seconds >= 1 && seconds <= 60) syncMs = seconds * 1000
+        for (let i = 0; i < readPins.length; i++) inValue[readPins[i]] = i + 1 < parts.length ? parts[i + 1] : ""
+        for (let i = 0; i < sentPins.length; i++) {
+            const p = sentPins[i]
+            outSentAt[p] = now
+            // Chương trình đổi số trong lúc đang gửi thì lần sau gửi tiếp.
+            if (outValue[p] == sentValues[i]) outDirty[p] = false
+        }
+        lastError = 0
     }
 
-    function send(pin: number, value: string): void {
-        if (!ready()) return
-        const body = request("/w/" + projectCode + "?v" + pin + "=" + encode(value))
-        lastOk = lastOk && body == "ok"
-        if (lastOk) lastError = 0
+    /** Luồng nền: đồng bộ theo nhịp; có chân mới cần đọc thì đồng bộ sớm. Chương trình chưa gửi, chưa đọc gì thì không gọi lên. */
+    function startLoop(): void {
+        if (loopStarted) return
+        loopStarted = true
+        control.inBackground(function () {
+            while (true) {
+                let used = false
+                for (let p = 0; p < 10; p++) if (outUsed[p] || inUsed[p]) used = true
+                if (!wifiConnected) {
+                    lastOk = false
+                } else if (projectCode.length == 0) {
+                    lastOk = false
+                    lastError = NO_PROJECT
+                } else if (used) {
+                    syncOnce()
+                }
+                const until = control.millis() + syncMs
+                while (control.millis() < until && !syncSoon) basic.pause(100)
+                syncSoon = false
+            }
+        })
+    }
+
+    /** Khối gửi, đọc mà chưa có khối "kết nối WiFi" chạy trước thì báo mã 9. */
+    function checkStarted(): void {
+        if (!loopStarted) {
+            lastOk = false
+            lastError = NOT_CONNECTED
+        }
+    }
+
+    function setOut(pin: number, value: string): void {
+        checkStarted()
+        if (!outUsed[pin] || outValue[pin] != value) {
+            outValue[pin] = value
+            outDirty[pin] = true
+        }
+        outUsed[pin] = true
     }
 
     /** Mã lỗi của AT+CWJAP ("+CWJAP:<mã>": 1 hết giờ, 2 sai mật khẩu, 3 không thấy mạng, 4 không vào được) ra mã lỗi của extension. */
@@ -366,6 +448,7 @@ namespace marklabsIot {
             if (mode == 0) lastError = NO_SERVER
         }
         busy = false
+        startLoop()
     }
 
     /**
@@ -387,7 +470,7 @@ namespace marklabsIot {
         return wifiConnected
     }
 
-    /** Đúng khi lần gửi hay đọc gần nhất thành công. */
+    /** Đúng khi lần đồng bộ gần nhất với máy chủ thành công. */
     //% blockId=marklabsiot_last_ok
     //% block="gửi, đọc vừa rồi thành công"
     //% group="Kết nối" weight=70
@@ -428,7 +511,8 @@ namespace marklabsIot {
     }
 
     /**
-     * Gửi một số lên chân ảo, bảng điều khiển hiện ngay. Mỗi lần gửi mất khoảng 1–2 giây.
+     * Gửi một số lên chân ảo. Khối không phải chờ mạng: mạch gửi số mới nhất ở lần đồng bộ sau (2 giây một lần khi có người mở
+     * bảng điều khiển, 10 giây khi không ai mở).
      * @param value số cần gửi, eg: 0
      * @param pin chân ảo
      */
@@ -436,11 +520,11 @@ namespace marklabsIot {
     //% block="gửi số %value lên chân %pin"
     //% group="Gửi lên" weight=60
     export function sendNumber(value: number, pin: VirtualPin): void {
-        send(pin, "" + value)
+        setOut(pin, "" + value)
     }
 
     /**
-     * Gửi chữ lên chân ảo.
+     * Gửi chữ lên chân ảo (gửi ở lần đồng bộ sau, như khối gửi số).
      * @param text chữ cần gửi, eg: "Xin chào"
      * @param pin chân ảo
      */
@@ -448,31 +532,28 @@ namespace marklabsIot {
     //% block="gửi chữ %text lên chân %pin"
     //% group="Gửi lên" weight=59
     export function sendText(text: string, pin: VirtualPin): void {
-        send(pin, text)
+        setOut(pin, text)
     }
 
     /**
-     * Đọc chữ trên chân ảo (vd từ ô chữ trên bảng điều khiển). Chân chưa có gì hoặc đọc không được thì ra chữ rỗng.
+     * Đọc chữ trên chân ảo (vd từ ô chữ trên bảng điều khiển). Khối không phải chờ mạng: trả chữ của lần đồng bộ gần nhất.
+     * Lần đầu đọc một chân thì mạch đồng bộ ngay, trong lúc chờ ra chữ rỗng.
      * @param pin chân ảo
      */
     //% blockId=marklabsiot_read_text
     //% block="đọc chữ từ chân %pin"
     //% group="Đọc về" weight=50
     export function readText(pin: VirtualPin): string {
-        if (!ready()) return ""
-        const body = request("/r/" + projectCode + "/v" + pin)
-        // Máy chủ đặt dấu = trước giá trị; thiếu dấu này là thân báo lỗi.
-        if (!lastOk || body.charAt(0) != "=") {
-            if (lastOk && body != "sai ma") lastError = NETWORK_GLITCH
-            lastOk = false
-            return ""
+        checkStarted()
+        if (!inUsed[pin]) {
+            inUsed[pin] = true
+            syncSoon = true
         }
-        lastError = 0
-        return body.substr(1)
+        return inValue[pin]
     }
 
     /**
-     * Đọc số trên chân ảo (vd từ nút nhấn, công tắc, thanh trượt). Không phải số hoặc đọc không được thì ra 0.
+     * Đọc số trên chân ảo (vd từ nút nhấn, công tắc, thanh trượt). Không phải số hoặc chưa có thì ra 0.
      * @param pin chân ảo
      */
     //% blockId=marklabsiot_read_number
@@ -487,7 +568,7 @@ namespace marklabsIot {
 
     /**
      * Đổi máy chủ (chỉ dùng khi thử máy chủ trên máy tính trong mạng LAN, vd "192.168.1.10:5190").
-     * @param host tên máy chủ, eg: "iot.markpage2k1.me"
+     * @param host tên máy chủ, eg: "192.168.1.10:5190"
      */
     //% blockId=marklabsiot_set_server
     //% block="đặt máy chủ %host"
