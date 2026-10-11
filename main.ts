@@ -34,9 +34,10 @@ enum VirtualPin {
 //% weight=90 color=#18a6a6 icon="" block="MarkLabs IoT"
 //% groups='["Kết nối", "Gửi lên", "Đọc về"]'
 namespace marklabsIot {
-    const OK = "\r\nOK\r\n"
-    const ERROR = "\r\nERROR\r\n"
-    const FAIL = "\r\nFAIL\r\n"
+    // Dòng kết quả của lệnh AT. `uart` luôn bắt đầu bằng "\n" nên dòng đầu tiên cũng khớp.
+    const OK = "\nOK\r\n"
+    const ERROR = "\nERROR\r\n"
+    const FAIL = "\nFAIL\r\n"
     const HEX = "0123456789ABCDEF"
 
     let server = "iot.markpage2k1.me"
@@ -45,6 +46,8 @@ namespace marklabsIot {
     let mode = 0
     let wifiConnected = false
     let lastOk = false
+    /** Lý do lần gần nhất không được, chữ không dấu để hiện được trên màn LED. Rỗng là không có lỗi. */
+    let lastError = ""
     /** Hai khối mạng chạy cùng lúc (vd "mãi mãi" và "khi nút A được bấm") phải chờ nhau, không thì lệnh AT lẫn vào nhau. */
     let busy = false
     /** Dữ liệu UART nhận được từ lệnh AT đang chạy. */
@@ -54,7 +57,7 @@ namespace marklabsIot {
 
     function flush(): void {
         serial.readString()
-        uart = ""
+        uart = "\n"
     }
 
     /** Đọc UART tới khi thấy một trong các chữ cần chờ; hết giờ thì trả chuỗi rỗng. Dữ liệu đã đọc nằm trong `uart`. */
@@ -185,18 +188,39 @@ namespace marklabsIot {
         else if (mode == 2) body = viaTcp(path)
         else lastOk = false
         busy = false
+        if (!lastOk) lastError = mode == 0 ? "khong goi duoc may chu" : "loi mang, thu lai"
+        else if (body == "sai ma") lastError = "sai ma du an"
         return body
     }
 
     function ready(): boolean {
         lastOk = false
-        return wifiConnected && projectCode.length > 0
+        if (!wifiConnected) {
+            if (lastError == "") lastError = "chua ket noi WiFi"
+            return false
+        }
+        if (projectCode.length == 0) {
+            lastError = "chua co ma du an"
+            return false
+        }
+        return true
     }
 
     function send(pin: number, value: string): void {
         if (!ready()) return
         const body = request("/w/" + projectCode + "?v" + pin + "=" + encode(value))
         lastOk = lastOk && body == "ok"
+        if (lastOk) lastError = ""
+    }
+
+    /** Mã lỗi của AT+CWJAP ("+CWJAP:<mã>") ra câu không dấu cho màn LED. */
+    function wifiError(): string {
+        const at = uart.indexOf("+CWJAP:")
+        const code = at < 0 ? "" : uart.charAt(at + 7)
+        if (code == "1") return "WiFi khong tra loi"
+        if (code == "2") return "sai mat khau WiFi"
+        if (code == "3") return "khong thay WiFi (ten sai hoac 5GHz)"
+        return "khong vao duoc WiFi"
     }
 
     /* ---------- Khối ---------- */
@@ -223,14 +247,28 @@ namespace marklabsIot {
         serial.setRxBufferSize(254)
         wifiConnected = false
         mode = 0
+        lastError = ""
         // Đặt lại mạch về mặc định (xoá cấu hình cũ của chương trình khác), chờ mạch khởi động lại.
         flush()
         serial.writeString("AT+RESTORE\r\n")
         waitFor(["ready"], 5000)
+        // Mạch WiFi có trả lời không: hỏi "AT" vài lần (lúc vừa bật nguồn mạch có thể chưa sẵn sàng).
+        let alive = false
+        for (let i = 0; i < 5 && !alive; i++) alive = command("AT", 1000)
+        if (!alive) {
+            lastError = "khong thay mach WiFi: kiem cong P15:P16, pin, cong tac"
+            busy = false
+            return
+        }
         command("ATE0", 1000)
         command("AT+CWMODE=1", 1000)
         wifiConnected = command("AT+CWJAP=\"" + atString(ssid) + "\",\"" + atString(password) + "\"", 20000)
-        if (wifiConnected) detect()
+        if (!wifiConnected) {
+            lastError = wifiError()
+        } else {
+            detect()
+            if (mode == 0) lastError = "vao WiFi roi nhung khong goi duoc may chu"
+        }
         busy = false
     }
 
@@ -259,6 +297,16 @@ namespace marklabsIot {
     //% group="Kết nối" weight=70
     export function succeeded(): boolean {
         return lastOk
+    }
+
+    /**
+     * Lý do lần gần nhất không được (chữ không dấu, hiện được trên màn LED), vd "sai mat khau WiFi". Rỗng là không có lỗi.
+     */
+    //% blockId=marklabsiot_last_error
+    //% block="lỗi gần nhất"
+    //% group="Kết nối" weight=65
+    export function errorText(): string {
+        return lastError
     }
 
     /**
@@ -297,9 +345,11 @@ namespace marklabsIot {
         const body = request("/r/" + projectCode + "/v" + pin)
         // Máy chủ đặt dấu = trước giá trị; thiếu dấu này là thân báo lỗi.
         if (!lastOk || body.charAt(0) != "=") {
+            if (lastOk && body != "sai ma") lastError = "may chu tra loi la"
             lastOk = false
             return ""
         }
+        lastError = ""
         return body.substr(1)
     }
 

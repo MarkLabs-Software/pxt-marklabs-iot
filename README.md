@@ -28,6 +28,7 @@ Cắm vào cổng khác thì bấm dấu + trên khối `kết nối WiFi` để
 | `đọc số từ chân V1` | Đọc số do bảng điều khiển gửi xuống (nút nhấn, công tắc, thanh trượt). |
 | `đọc chữ từ chân V1` | Đọc chữ (ô chữ trên bảng điều khiển). |
 | `gửi, đọc vừa rồi thành công` | Đúng khi lần gửi hay đọc gần nhất thành công. |
+| `lỗi gần nhất` | Lý do vừa hỏng, chữ không dấu để hiện lên màn LED (vd `sai mat khau WiFi`, `khong thay mach WiFi: kiem cong P15:P16, pin, cong tac`). |
 
 Mỗi lần gửi hoặc đọc mất khoảng 1–2 giây.
 
